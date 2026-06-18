@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lex toolchain
+        run: |
+          git clone --depth=1 https://github.com/alpibrusl/lex-lang /tmp/lex-lang
+          cd /tmp/lex-lang && cargo build --release -p lex-cli
+          echo "/tmp/lex-lang/target/release" >> $GITHUB_PATH
+
+      - name: Install package dependencies
+        run: lex pkg install
+
+      - name: Type-check (strict)
+        run: lex check --strict src/
+
+      - name: Format check
+        run: lex fmt --check src/ tests/
+
+      - name: Test
+        run: lex test

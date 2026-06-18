@@ -1,0 +1,5 @@
+# Lex toolchain internal directory
+.cli/
+
+# local artifacts created by `lex run`
+*.db
