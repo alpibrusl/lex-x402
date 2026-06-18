@@ -173,3 +173,4 @@ fn encode_required(pr :: PaymentRequired) -> Str {
 fn encode_settlement(s :: Settlement) -> Str {
   encode_header(json.stringify(({ success: s.success, transaction: s.transaction, network: s.network, payer: s.payer, errorReason: s.error } :: SettleWire)))
 }
+

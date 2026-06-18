@@ -24,3 +24,4 @@ import "../types" as types
 fn build(req :: types.Requirements) -> Result[Str, Str] {
   Err(str.concat("exact_evm: blocked on lex-lang #655 (keccak256 + secp256k1) — cannot pay on network ", req.network))
 }
+

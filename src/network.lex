@@ -11,9 +11,6 @@ import "std.str" as str
 
 type Family = Evm | Solana | Unknown
 
-# Classify a network identifier by CAIP-2 namespace. Accepts both the
-# CAIP-2 form ("eip155:8453", "solana:5eykt...") and the x402 short
-# names ("base", "solana") still seen in transports-v1 traffic.
 fn family(network :: Str) -> Family
   examples {
     family("eip155:8453") => Evm,
@@ -64,3 +61,4 @@ fn solana_mainnet() -> Str
 {
   "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
 }
+

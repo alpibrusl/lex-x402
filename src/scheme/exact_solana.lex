@@ -125,3 +125,4 @@ fn authorization_from_json(p :: jv.Json) -> Authorization {
 fn empty_authorization() -> Authorization {
   { from: "", to: "", value: "", validAfter: 0, validBefore: 0, nonce: "" }
 }
+
