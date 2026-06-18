@@ -113,7 +113,7 @@ fn decode_required(header_b64 :: Str) -> Result[PaymentRequired, Str] {
 
 fn parse_required(text :: Str) -> Result[PaymentRequired, Str] {
   match jv.parse(text) {
-    Err(e) => Err(str.concat("x402: PAYMENT-REQUIRED bad json: ", e)),
+    Err(e) => Err(str.concat("x402: PAYMENT-REQUIRED bad json: ", e.message)),
     Ok(j) => Ok({ x402_version: get_int(j, "x402Version"), accepts: parse_accepts(j), error: get_str(j, "error") }),
   }
 }
@@ -147,7 +147,7 @@ fn decode_settlement(header_b64 :: Str) -> Result[Settlement, Str] {
 
 fn parse_settlement(text :: Str) -> Result[Settlement, Str] {
   match jv.parse(text) {
-    Err(e) => Err(str.concat("x402: PAYMENT-RESPONSE bad json: ", e)),
+    Err(e) => Err(str.concat("x402: PAYMENT-RESPONSE bad json: ", e.message)),
     Ok(j) => Ok({ success: get_bool(j, "success"), transaction: settlement_tx(j), network: get_str(j, "network"), payer: get_str(j, "payer"), error: get_str(j, "errorReason") }),
   }
 }

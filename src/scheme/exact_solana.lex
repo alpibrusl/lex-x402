@@ -105,7 +105,7 @@ fn decode(header_b64 :: Str) -> Result[Payload, Str] {
 
 fn parse(text :: Str) -> Result[Payload, Str] {
   match jv.parse(text) {
-    Err(e) => Err(str.concat("exact_solana: payload bad json: ", e)),
+    Err(e) => Err(str.concat("exact_solana: payload bad json: ", e.message)),
     Ok(j) => match jv.get_field(j, "payload") {
       None => Err("exact_solana: payload missing inner `payload` object"),
       Some(p) => Ok({ x402Version: types.get_int(j, "x402Version"), scheme: types.get_str(j, "scheme"), network: types.get_str(j, "network"), payload: { signature: types.get_str(p, "signature"), authorization: authorization_from_json(p) } }),
