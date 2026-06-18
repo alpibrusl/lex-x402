@@ -1,0 +1,9 @@
+[package]
+name        = "lex-x402"
+version     = "0.1.0"
+lex         = "0.9.10"
+description = "x402 internet-native payments protocol (HTTP 402 Payment Required) in Lex."
+license     = "EUPL-1.2"
+
+[dependencies]
+lex-schema = { git = "https://github.com/alpibrusl/lex-schema" }
