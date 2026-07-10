@@ -29,10 +29,11 @@ x402 is *how* an approved spend is executed against a 402 endpoint. It's the nat
 - **`scheme/exact_evm`** — the `exact` scheme on EVM (EIP-3009). **Blocked on [lex-lang #655](https://github.com/alpibrusl/lex-lang/issues/655)** (`keccak256` + `secp256k1` in `std.crypto`); `build` returns a structured error rather than hand-rolling crypto.
 - **`facilitator`** — `/verify` + `/settle` client over `std.http`.
 - **`client`** — drive the full 402 → sign → retry handshake; return the settlement reference.
+- **`server`** — the resource-server (merchant) counterpart to `client`: build a 402 challenge (`build_requirement` + `challenge` + `challenge_header`), decode the payer's signed retry (`decode_payment`), and verify + settle it against a facilitator in one call (`charge`), then emit the paid response (`encode_response_header`). Delegates the actual cryptographic/funds check to a facilitator rather than running a chain node itself — same trust model as `client`.
 
 ## Status
 
-The **Solana (ed25519) path is implemented end-to-end** and is the validation of the protocol/handshake shape. The **EVM (`exact` / EIP-3009) path is blocked on lex-lang #655**; it lands once `keccak256` + `secp256k1` ship in `std.crypto`. A resource-side `server` helper (emit `402`, verify incoming payments) is a follow-up — the encoders/decoders it needs already live in `types` and `scheme/*`.
+The **Solana (ed25519) path is implemented end-to-end on both sides** — `client` (pay) and `server` (charge) — and is the validation of the protocol/handshake shape. The **EVM (`exact` / EIP-3009) path is blocked on lex-lang #655**; it lands once `keccak256` + `secp256k1` ship in `std.crypto`.
 
 ## Develop
 
