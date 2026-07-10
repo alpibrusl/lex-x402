@@ -24,6 +24,7 @@ jobs:
         run: |
           lex check --strict src/client.lex
           lex check --strict src/facilitator.lex
+          lex check --strict src/server.lex
 
       - name: Format check
         run: lex fmt --check src/ tests/
