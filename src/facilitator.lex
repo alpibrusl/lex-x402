@@ -20,14 +20,30 @@ import "std.json" as json
 
 import "std.http" as http
 
+import "std.crypto" as crypto
+
 import "./types" as types
 
 type Facilitator = { verify_url :: Str, settle_url :: Str }
 
-# Body sent to /verify and /settle: the protocol version, the base64
-# payment header, and the requirement it satisfies (re-serialized to the
-# wire shape so the facilitator sees spec field names).
-type Body = { x402Version :: Int, paymentPayload :: Str, paymentRequirements :: types.ReqWire }
+# `paymentPayload` in the REST body must be the DECODED payload object, not
+# the base64 string carried in the PAYMENT-SIGNATURE header -- the base64
+# form is a wire-transport detail of the HTTP header, not the JSON API
+# contract. Sending the base64 string as a JSON string value (the original
+# bug here) makes a real facilitator's version/network dispatch fail with
+# "No facilitator registered for x402 version: undefined", because it never
+# finds an x402Version field where it expects one (nested inside the
+# decoded object, not the outer string). Found live paying a real facilitator
+# (x402.org) end-to-end from loom's lex-x402-api golden path.
+fn decode_payload_json(payment_header :: Str) -> Result[Str, Str] {
+  match crypto.base64_decode(payment_header) {
+    Err(_) => Err("x402: paymentPayload is not valid base64"),
+    Ok(raw) => match bytes.to_str(raw) {
+      Err(_) => Err("x402: paymentPayload is not UTF-8"),
+      Ok(text) => Ok(text),
+    },
+  }
+}
 
 # Build a facilitator bound to a base URL (e.g. "https://x402.org/facilitator").
 fn make(base_url :: Str) -> Facilitator {
@@ -36,17 +52,30 @@ fn make(base_url :: Str) -> Facilitator {
 
 # POST the payment to /settle and return the settlement result.
 fn settle(fac :: Facilitator, payment_header :: Str, req :: types.Requirements) -> [net] Result[types.Settlement, Str] {
-  post(fac.settle_url, body(payment_header, req))
+  match body(payment_header, req) {
+    Err(e) => Err(e),
+    Ok(b) => post(fac.settle_url, b),
+  }
 }
 
 # POST the payment to /verify (no broadcast) and return the verdict as a
 # settlement-shaped result (`success` = valid).
 fn verify(fac :: Facilitator, payment_header :: Str, req :: types.Requirements) -> [net] Result[types.Settlement, Str] {
-  post(fac.verify_url, body(payment_header, req))
+  match body(payment_header, req) {
+    Err(e) => Err(e),
+    Ok(b) => post(fac.verify_url, b),
+  }
 }
 
-fn body(payment_header :: Str, req :: types.Requirements) -> Str {
-  json.stringify(({ x402Version: types.version(), paymentPayload: payment_header, paymentRequirements: types.to_wire(req) } :: Body))
+# The protocol version, the DECODED payment payload (spliced in verbatim --
+# it's already well-formed JSON, re-stringifying it as a nested string would
+# reintroduce the bug), and the requirement it satisfies (re-serialized to
+# the wire shape so the facilitator sees spec field names).
+fn body(payment_header :: Str, req :: types.Requirements) -> Result[Str, Str] {
+  match decode_payload_json(payment_header) {
+    Err(e) => Err(e),
+    Ok(payload_json) => Ok(str.join(["{\"x402Version\":", int.to_str(types.version()), ",\"paymentPayload\":", payload_json, ",\"paymentRequirements\":", json.stringify(types.to_wire(req)), "}"], "")),
+  }
 }
 
 fn post(url :: Str, json_body :: Str) -> [net] Result[types.Settlement, Str] {
