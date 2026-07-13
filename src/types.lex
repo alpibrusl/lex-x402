@@ -39,7 +39,12 @@ fn version() -> Int
 # ---- internal model -----------------------------------------------
 # One payment option offered by a resource server (an element of the
 # 402 `accepts` set). Amounts are atomic-unit decimal strings, per spec.
-type Requirements = { scheme :: Str, network :: Str, max_amount_required :: Str, resource :: Str, description :: Str, mime_type :: Str, pay_to :: Str, max_timeout_seconds :: Int, asset :: Str }
+# `fee_payer` (from the wire's nested `extra.feePayer`, V2 shape) is the
+# facilitator's sponsor address for SVM `exact` payments -- the client signs
+# only its own transfer-authority slot; the facilitator's fee payer signs
+# and covers gas during settlement. Empty when absent (EVM requirements,
+# or a facilitator/network that doesn't sponsor gas).
+type Requirements = { scheme :: Str, network :: Str, max_amount_required :: Str, resource :: Str, description :: Str, mime_type :: Str, pay_to :: Str, max_timeout_seconds :: Int, asset :: Str, fee_payer :: Str }
 
 # The full 402 challenge: the version, the offered options, and an
 # optional human-readable error from the server.
@@ -131,7 +136,27 @@ fn parse_accepts(j :: jv.Json) -> List[Requirements] {
 }
 
 fn requirement_from_json(j :: jv.Json) -> Requirements {
-  { scheme: get_str(j, "scheme"), network: get_str(j, "network"), max_amount_required: get_str(j, "maxAmountRequired"), resource: get_str(j, "resource"), description: get_str(j, "description"), mime_type: get_str(j, "mimeType"), pay_to: get_str(j, "payTo"), max_timeout_seconds: get_int(j, "maxTimeoutSeconds"), asset: get_str(j, "asset") }
+  { scheme: get_str(j, "scheme"), network: get_str(j, "network"), max_amount_required: amount_field(j), resource: get_str(j, "resource"), description: get_str(j, "description"), mime_type: get_str(j, "mimeType"), pay_to: get_str(j, "payTo"), max_timeout_seconds: get_int(j, "maxTimeoutSeconds"), asset: get_str(j, "asset"), fee_payer: get_nested_str(j, "extra", "feePayer") }
+}
+
+# V2 requirements use `amount`; V1 (and this package's own outbound wire
+# shape) use `maxAmountRequired`. Accept either so decode_required works
+# against a real V2 facilitator/server without breaking the V1 fixtures
+# already covered by test_x402.lex/test_server.lex.
+fn amount_field(j :: jv.Json) -> Str {
+  let v2 := get_str(j, "amount")
+  if str.len(v2) > 0 {
+    v2
+  } else {
+    get_str(j, "maxAmountRequired")
+  }
+}
+
+fn get_nested_str(j :: jv.Json, outer_key :: Str, inner_key :: Str) -> Str {
+  match jv.get_field(j, outer_key) {
+    None => "",
+    Some(outer) => get_str(outer, inner_key),
+  }
 }
 
 # ---- inbound: PAYMENT-RESPONSE ------------------------------------

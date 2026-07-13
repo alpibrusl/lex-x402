@@ -47,11 +47,11 @@ fn public_b64url() -> Result[Str, Str] {
 }
 
 fn solana_requirement() -> types.Requirements {
-  { scheme: "exact", network: network.solana_mainnet(), max_amount_required: "1000000", resource: "https://api.example.com/data", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "EPjFWdd5USDCmintxxxxxxxxxxxxxxxxxxxxxxxxxxxx" }
+  { scheme: "exact", network: network.solana_mainnet(), max_amount_required: "1000000", resource: "https://api.example.com/data", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "EPjFWdd5USDCmintxxxxxxxxxxxxxxxxxxxxxxxxxxxx", fee_payer: "" }
 }
 
 fn evm_requirement() -> types.Requirements {
-  { scheme: "exact", network: "eip155:8453", max_amount_required: "1000000", resource: "https://api.example.com/data", description: "API call", mime_type: "application/json", pay_to: "0x000000000000000000000000000000000000dEaD", max_timeout_seconds: 60, asset: "0xUSDC" }
+  { scheme: "exact", network: "eip155:8453", max_amount_required: "1000000", resource: "https://api.example.com/data", description: "API call", mime_type: "application/json", pay_to: "0x000000000000000000000000000000000000dEaD", max_timeout_seconds: 60, asset: "0xUSDC", fee_payer: "" }
 }
 
 fn sample_required() -> types.PaymentRequired {
@@ -152,8 +152,55 @@ fn t_evm_blocked() -> Result[Unit, Str] {
   }
 }
 
+# A real V2 facilitator's challenge uses `amount` (not `maxAmountRequired`)
+# and nests the fee-payer sponsor address under `extra.feePayer` -- svm_client
+# needs both to build a real transaction. Confirmed live against
+# x402.org/facilitator this session.
+fn t_decode_required_reads_v2_amount_and_fee_payer() -> Result[Unit, Str] {
+  let raw := "{\"x402Version\":2,\"accepts\":[{\"scheme\":\"exact\",\"network\":\"solana-devnet\",\"amount\":\"10000\",\"asset\":\"AssetMint111111111111111111111111111111111\",\"payTo\":\"MerchantSoLAddr2222222222222222222222222222\",\"maxTimeoutSeconds\":60,\"extra\":{\"feePayer\":\"FeePayerSoLAddr33333333333333333333333333333\"}}]}"
+  let hdr := types.encode_header(raw)
+  match types.decode_required(hdr) {
+    Err(e) => Err(str.concat("decode_required: ", e)),
+    Ok(pr) => match list.head(pr.accepts) {
+      None => Err("expected one requirement"),
+      Some(req) => if req.max_amount_required == "10000" {
+        if req.fee_payer == "FeePayerSoLAddr33333333333333333333333333333" {
+          Ok(())
+        } else {
+          Err(str.concat("expected fee_payer parsed from extra.feePayer, got: ", req.fee_payer))
+        }
+      } else {
+        Err(str.concat("expected amount \"10000\" (V2 field name), got: ", req.max_amount_required))
+      },
+    },
+  }
+}
+
+# A requirement with neither `amount` nor `extra` (a V1-style facilitator,
+# or this package's own outbound wire shape) must still parse cleanly --
+# max_amount_required falls back to maxAmountRequired, fee_payer is empty.
+fn t_decode_required_falls_back_to_v1_shape() -> Result[Unit, Str] {
+  let raw := "{\"x402Version\":2,\"accepts\":[{\"scheme\":\"exact\",\"network\":\"solana-devnet\",\"maxAmountRequired\":\"5000\",\"payTo\":\"MerchantSoLAddr2222222222222222222222222222\",\"maxTimeoutSeconds\":60,\"asset\":\"AssetMint111111111111111111111111111111111\"}]}"
+  let hdr := types.encode_header(raw)
+  match types.decode_required(hdr) {
+    Err(e) => Err(str.concat("decode_required: ", e)),
+    Ok(pr) => match list.head(pr.accepts) {
+      None => Err("expected one requirement"),
+      Some(req) => if req.max_amount_required == "5000" {
+        if str.len(req.fee_payer) == 0 {
+          Ok(())
+        } else {
+          Err(str.concat("expected empty fee_payer when extra is absent, got: ", req.fee_payer))
+        }
+      } else {
+        Err(str.concat("expected fallback to maxAmountRequired \"5000\", got: ", req.max_amount_required))
+      },
+    },
+  }
+}
+
 fn run_all() -> Unit {
-  let results := [t_select_solana(), t_sign_and_verify(), t_tamper_fails(), t_settlement_roundtrip(), t_evm_blocked()]
+  let results := [t_select_solana(), t_sign_and_verify(), t_tamper_fails(), t_settlement_roundtrip(), t_evm_blocked(), t_decode_required_reads_v2_amount_and_fee_payer(), t_decode_required_falls_back_to_v1_shape()]
   let failures := list.fold(results, 0, fn (n :: Int, r :: Result[Unit, Str]) -> Int {
     match r {
       Ok(_) => n,
