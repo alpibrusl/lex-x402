@@ -22,7 +22,7 @@ import "../src/types" as types
 import "../src/facilitator" as facilitator
 
 fn requirement() -> types.Requirements {
-  { scheme: "exact", network: "solana-devnet", max_amount_required: "10000", resource: "https://api.example.com/convert", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "AssetMint111111111111111111111111111111111" }
+  { scheme: "exact", network: "solana-devnet", max_amount_required: "10000", resource: "https://api.example.com/convert", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "AssetMint111111111111111111111111111111111", fee_payer: "" }
 }
 
 fn payment_header() -> Str {

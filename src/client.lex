@@ -29,12 +29,18 @@ import "./scheme/exact_solana" as solana
 
 import "./scheme/exact_evm" as evm
 
+import "./scheme/svm_client" as svm_client
+
 # Per-payment config: the resource to pay for, the ed25519 signer, and
 # the authorization nonce / validity window. The caller supplies nonce
 # and window because the handshake runs under `[net]` only (the gate's
 # executor row) and so cannot read the clock or the CSPRNG itself — see
 # lex-guard's x402_exec for how the executor derives them per intent.
-type Config = { resource_url :: Str, signer :: solana.Signer, nonce :: Str, valid_after :: Int, valid_before :: Int }
+# nonce/valid_after/valid_before are unused by the real Solana `exact`
+# path (svm_client) -- kept for the EVM path and any facilitator that
+# still expects the older envelope shape. `svm_rpc_url` overrides
+# svm_rpc's public default endpoint; pass "" to use it.
+type Config = { resource_url :: Str, signer :: solana.Signer, nonce :: Str, valid_after :: Int, valid_before :: Int, svm_rpc_url :: Str }
 
 # ---- header names (transports-v2) ---------------------------------
 fn h_required() -> Str
@@ -196,9 +202,9 @@ fn is_exact_evm(r :: types.Requirements) -> Bool {
   }
 }
 
-fn build_payload(cfg :: Config, req :: types.Requirements) -> Result[Str, Str] {
+fn build_payload(cfg :: Config, req :: types.Requirements) -> [net] Result[Str, Str] {
   match network.family(req.network) {
-    Solana => solana.build(req, cfg.signer, cfg.valid_after, cfg.valid_before, cfg.nonce),
+    Solana => svm_client.build_payment(req, cfg.signer, cfg.svm_rpc_url),
     Evm => evm.build(req),
     Unknown => Err(str.concat("x402: unsupported network ", req.network)),
   }

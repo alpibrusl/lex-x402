@@ -25,7 +25,7 @@ import "./scheme/exact_solana" as solana
 # Build the single Requirements a resource offers (this package only
 # implements the Solana `exact` scheme end-to-end — see `network`).
 fn build_requirement(price_atomic :: Str, resource_url :: Str, description :: Str, pay_to :: Str, network :: Str, asset :: Str, timeout_seconds :: Int) -> types.Requirements {
-  { scheme: "exact", network: network, max_amount_required: price_atomic, resource: resource_url, description: description, mime_type: "application/json", pay_to: pay_to, max_timeout_seconds: timeout_seconds, asset: asset }
+  { scheme: "exact", network: network, max_amount_required: price_atomic, resource: resource_url, description: description, mime_type: "application/json", pay_to: pay_to, max_timeout_seconds: timeout_seconds, asset: asset, fee_payer: "" }
 }
 
 # Wrap one or more offered requirements into the full 402 challenge.
