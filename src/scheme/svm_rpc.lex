@@ -23,11 +23,22 @@ import "lex-schema/json_value" as jv
 # Default public RPC endpoints per x402 network id. Callers needing a
 # private/paid RPC (recommended for anything beyond light testing) pass
 # their own `rpc_url` instead of relying on this.
+#
+# Bug found live (#93/OP5 e2e verification): the CAIP-2 devnet id a real
+# facilitator actually advertises (x402.org/facilitator's /supported,
+# solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1) does NOT contain the substring
+# "devnet" -- the naive check below silently queried MAINNET RPC for a
+# devnet address, which doesn't exist there. Recognize the specific id
+# too, not just the short "solana-devnet" string.
 fn default_rpc_url(network :: Str) -> Str {
   if str.contains(network, "devnet") {
     "https://api.devnet.solana.com"
   } else {
-    "https://api.mainnet-beta.solana.com"
+    if network == "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1" {
+      "https://api.devnet.solana.com"
+    } else {
+      "https://api.mainnet-beta.solana.com"
+    }
   }
 }
 

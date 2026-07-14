@@ -59,6 +59,19 @@ fn default_rpc_url_mainnet() -> Result[Unit, Str] {
   }
 }
 
+# Found live (e2e verification): a real facilitator's devnet CAIP-2 id
+# doesn't contain the substring "devnet" -- silently querying mainnet RPC
+# for it caused an incorrect "no token account" error against real
+# devnet addresses.
+fn default_rpc_url_devnet_caip2() -> Result[Unit, Str] {
+  let devnet_caip2 := "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1"
+  if rpc.default_rpc_url(devnet_caip2) == "https://api.devnet.solana.com" {
+    Ok(())
+  } else {
+    Err(str.concat("expected the devnet RPC url for the CAIP-2 devnet id, got: ", rpc.default_rpc_url(devnet_caip2)))
+  }
+}
+
 # The final PAYMENT-SIGNATURE header is a real V2 envelope: x402Version,
 # a top-level `accepted` mirroring the requirement (field `amount`, not
 # `maxAmountRequired`), and payload.transaction carrying the wire tx.
@@ -109,7 +122,7 @@ fn get_nested_json_str(j :: jv.Json, outer :: Str, inner :: Str) -> Str {
 }
 
 fn suite() -> [net] List[Result[Unit, Str]] {
-  [t_build_payment_requires_fee_payer(), default_rpc_url_devnet(), default_rpc_url_mainnet(), t_payload_json_is_v2_shape()]
+  [t_build_payment_requires_fee_payer(), default_rpc_url_devnet(), default_rpc_url_mainnet(), default_rpc_url_devnet_caip2(), t_payload_json_is_v2_shape()]
 }
 
 fn run_all() -> [net] Unit {

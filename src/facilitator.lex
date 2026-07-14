@@ -16,8 +16,6 @@ import "std.map" as map
 
 import "std.bytes" as bytes
 
-import "std.json" as json
-
 import "std.http" as http
 
 import "std.crypto" as crypto
@@ -69,12 +67,17 @@ fn verify(fac :: Facilitator, payment_header :: Str, req :: types.Requirements) 
 
 # The protocol version, the DECODED payment payload (spliced in verbatim --
 # it's already well-formed JSON, re-stringifying it as a nested string would
-# reintroduce the bug), and the requirement it satisfies (re-serialized to
-# the wire shape so the facilitator sees spec field names).
+# reintroduce the bug), and the requirement it satisfies.
+# `paymentRequirements` must be sent in the same V2 shape (`amount`, not
+# `maxAmountRequired`; `extra.feePayer`) the paymentPayload's own
+# `accepted` object uses -- a real facilitator's /verify and /settle BOTH
+# validate against it. Found live: /settle rejected the V1-shaped
+# `to_wire` requirements with invalid_exact_svm_payload_missing_fee_payer
+# even when the payload's transaction itself was already valid.
 fn body(payment_header :: Str, req :: types.Requirements) -> Result[Str, Str] {
   match decode_payload_json(payment_header) {
     Err(e) => Err(e),
-    Ok(payload_json) => Ok(str.join(["{\"x402Version\":", int.to_str(types.version()), ",\"paymentPayload\":", payload_json, ",\"paymentRequirements\":", json.stringify(types.to_wire(req)), "}"], "")),
+    Ok(payload_json) => Ok(str.join(["{\"x402Version\":", int.to_str(types.version()), ",\"paymentPayload\":", payload_json, ",\"paymentRequirements\":", types.requirements_v2_json(req), "}"], "")),
   }
 }
 
