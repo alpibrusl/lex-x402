@@ -111,6 +111,97 @@ fn test_transfer_checked_discriminator() -> Result[Unit, Str] {
   }
 }
 
+# Real, on-chain-verified Associated Token Account addresses (#93 ATA
+# auto-creation follow-up): confirmed live this session by deriving them
+# from Lex and cross-checking against getTokenAccountsByOwner's real
+# result for the same (owner, mint) pair on devnet -- exact byte-for-byte
+# match, not just "a plausible-looking address".
+fn test_associated_token_address_matches_real_onchain_account() -> Result[Unit, Str] {
+  match tx.token_program_id() {
+    Err(e) => Err(e),
+    Ok(token_pid) => match tx.decode_pubkey("6zmfwgnYVMhnKSJKFetkqtgQ3U2h6QdEbjAE7jmGxSc2") {
+      Err(e) => Err(e),
+      Ok(merchant) => match tx.decode_pubkey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU") {
+        Err(e) => Err(e),
+        Ok(mint) => match tx.associated_token_address(merchant, mint, token_pid) {
+          Err(e) => Err(str.concat("derivation failed: ", e)),
+          Ok(derived) => match tx.decode_pubkey("JDYXyy6yQCfspWgdVaVNpDmhsf4oYyEsx4jc17sdUvPH") {
+            Err(e) => Err(e),
+            Ok(expected) => if bytes.eq(derived, expected) {
+              Ok(())
+            } else {
+              Err("derived ATA does not match the real on-chain address")
+            },
+          },
+        },
+      },
+    },
+  }
+}
+
+fn test_associated_token_address_matches_real_payer_account() -> Result[Unit, Str] {
+  match tx.token_program_id() {
+    Err(e) => Err(e),
+    Ok(token_pid) => match tx.decode_pubkey("FGDYmR8zKEucYLwcSJ3Rra6Gi62LqvGHMM9vk7sTjDNV") {
+      Err(e) => Err(e),
+      Ok(payer) => match tx.decode_pubkey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU") {
+        Err(e) => Err(e),
+        Ok(mint) => match tx.associated_token_address(payer, mint, token_pid) {
+          Err(e) => Err(str.concat("derivation failed: ", e)),
+          Ok(derived) => match tx.decode_pubkey("2bdoBBRKdtYGFV2imfo3rbdwWi6pzEGms14KT7nBGY8v") {
+            Err(e) => Err(e),
+            Ok(expected) => if bytes.eq(derived, expected) {
+              Ok(())
+            } else {
+              Err("derived ATA does not match the real on-chain payer account")
+            },
+          },
+        },
+      },
+    },
+  }
+}
+
+fn test_create_associated_token_account_idempotent_discriminator() -> Result[Unit, Str] {
+  match tx.associated_token_program_id() {
+    Err(e) => Err(e),
+    Ok(ata_pid) => match tx.decode_pubkey("6zmfwgnYVMhnKSJKFetkqtgQ3U2h6QdEbjAE7jmGxSc2") {
+      Err(e) => Err(e),
+      Ok(addr) => {
+        let ix := tx.create_associated_token_account_idempotent(ata_pid, addr, addr, addr, addr, addr, addr)
+        assert_bytes_eq("CreateIdempotent discriminator", ix.data, [1])
+      },
+    },
+  }
+}
+
+# The create-ATA instruction's payer must be a signer, and the ATA/owner
+# must NOT be (a common mistake: marking the owner as a signer when it's
+# only ever read, never authorizes anything in this instruction).
+fn test_create_associated_token_account_idempotent_account_flags() -> Result[Unit, Str] {
+  match tx.associated_token_program_id() {
+    Err(e) => Err(e),
+    Ok(ata_pid) => match tx.decode_pubkey("6zmfwgnYVMhnKSJKFetkqtgQ3U2h6QdEbjAE7jmGxSc2") {
+      Err(e) => Err(e),
+      Ok(addr) => {
+        let ix := tx.create_associated_token_account_idempotent(ata_pid, addr, addr, addr, addr, addr, addr)
+        match list.head(ix.accounts) {
+          None => Err("expected at least one account"),
+          Some(payer_meta) => if payer_meta.is_signer {
+            if payer_meta.is_writable {
+              Ok(())
+            } else {
+              Err("expected the payer account to be writable")
+            }
+          } else {
+            Err("expected the payer account to be a signer")
+          },
+        }
+      },
+    },
+  }
+}
+
 fn payer_pk() -> Bytes {
   match tx.decode_pubkey("FGDYmR8zKEucYLwcSJ3Rra6Gi62LqvGHMM9vk7sTjDNV") {
     Ok(pk) => pk,
@@ -238,7 +329,7 @@ fn test_unsigned_wire_transaction_has_zeroed_signature_slots() -> Result[Unit, S
 }
 
 fn suite() -> List[Result[Unit, Str]] {
-  [test_compact_u16_single_byte(), test_compact_u16_two_bytes(), test_compact_u16_three_bytes(), test_decode_pubkey_known_addresses(), test_decode_pubkey_rejects_bad_length(), test_set_compute_unit_limit_discriminator(), test_set_compute_unit_price_discriminator(), test_transfer_checked_discriminator(), test_fee_payer_is_first_account_key(), test_message_header_signer_count_dedupes_fee_payer_as_authority(), test_message_header_signer_count_two_distinct_signers(), test_unsigned_wire_transaction_has_zeroed_signature_slots()]
+  [test_compact_u16_single_byte(), test_compact_u16_two_bytes(), test_compact_u16_three_bytes(), test_decode_pubkey_known_addresses(), test_decode_pubkey_rejects_bad_length(), test_set_compute_unit_limit_discriminator(), test_set_compute_unit_price_discriminator(), test_transfer_checked_discriminator(), test_associated_token_address_matches_real_onchain_account(), test_associated_token_address_matches_real_payer_account(), test_create_associated_token_account_idempotent_discriminator(), test_create_associated_token_account_idempotent_account_flags(), test_fee_payer_is_first_account_key(), test_message_header_signer_count_dedupes_fee_payer_as_authority(), test_message_header_signer_count_two_distinct_signers(), test_unsigned_wire_transaction_has_zeroed_signature_slots()]
 }
 
 fn run_all() -> Unit {

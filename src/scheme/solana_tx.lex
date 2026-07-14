@@ -126,6 +126,66 @@ fn compute_budget_program_id() -> Result[Bytes, Str] {
   decode_pubkey("ComputeBudget111111111111111111111111111111")
 }
 
+fn system_program_id() -> Result[Bytes, Str] {
+  decode_pubkey("11111111111111111111111111111111")
+}
+
+fn associated_token_program_id() -> Result[Bytes, Str] {
+  decode_pubkey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
+}
+
+# Solana Program Derived Address: try bump seeds from 255 down to 0,
+# hashing (seeds ++ bump ++ program_id ++ "ProgramDerivedAddress") with
+# SHA-256 each time, until the candidate 32 bytes do NOT decompress to a
+# point on Edwards25519 (crypto.ed25519_is_valid_point) -- that's what
+# makes it a valid PDA: an address no private key could ever sign for.
+# Returns (address, bump_seed).
+fn find_program_address(seeds :: List[Bytes], program_id :: Bytes) -> Result[(Bytes, Int), Str] {
+  try_bump(seeds, program_id, 255)
+}
+
+fn try_bump(seeds :: List[Bytes], program_id :: Bytes, bump :: Int) -> Result[(Bytes, Int), Str] {
+  if bump < 0 {
+    Err("solana_tx: no valid PDA bump found in [0, 255] for these seeds")
+  } else {
+    let preimage := bytes.concat_all(list.concat(seeds, [bytes.u8(bump), program_id, bytes.from_str("ProgramDerivedAddress")]))
+    let candidate := crypto.sha256(preimage)
+    if crypto.ed25519_is_valid_point(candidate) {
+      try_bump(seeds, program_id, bump - 1)
+    } else {
+      Ok((candidate, bump))
+    }
+  }
+}
+
+# The Associated Token Account address for (owner, mint) under
+# `token_program` (SPL Token or Token-2022) -- the standard, deterministic
+# per-owner-per-mint account real wallets/clients also derive this way.
+fn associated_token_address(owner :: Bytes, mint :: Bytes, token_program :: Bytes) -> Result[Bytes, Str] {
+  match associated_token_program_id() {
+    Err(e) => Err(e),
+    Ok(ata_program) => match find_program_address([owner, token_program, mint], ata_program) {
+      Err(e) => Err(e),
+      Ok(found) => match found {
+        (addr, _) => Ok(addr),
+      },
+    },
+  }
+}
+
+# Associated Token Program instruction discriminator 1: CreateIdempotent
+# -- creates the account if absent, succeeds as a no-op if it already
+# exists (unlike plain Create/discriminator 0, which errors on an
+# existing account). Safe to always include: the same transaction that
+# transfers into a payTo's ATA can create it in one atomic step.
+# Accounts, in order: payer (signer, writable, pays rent), the ATA
+# (writable), owner (readonly), mint (readonly), system program
+# (readonly), token program (readonly).
+fn create_associated_token_account_idempotent(ata_program :: Bytes, payer :: Bytes, ata :: Bytes, owner :: Bytes, mint :: Bytes, system_program :: Bytes, token_program :: Bytes) -> RawInstruction {
+  let accounts := [{ pubkey: payer, is_signer: true, is_writable: true }, { pubkey: ata, is_signer: false, is_writable: true }, { pubkey: owner, is_signer: false, is_writable: false }, { pubkey: mint, is_signer: false, is_writable: false }, { pubkey: system_program, is_signer: false, is_writable: false }, { pubkey: token_program, is_signer: false, is_writable: false }]
+  { program_id: ata_program, accounts: accounts, data: bytes.u8(1) }
+}
+
 # ComputeBudget instruction discriminator 2: SetComputeUnitLimit(u32 units).
 fn set_compute_unit_limit(program_id :: Bytes, units :: Int) -> RawInstruction {
   { program_id: program_id, accounts: [], data: bytes.concat(bytes.u8(2), bytes.u32_le(units)) }
