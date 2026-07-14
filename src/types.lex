@@ -16,6 +16,8 @@
 
 import "std.str" as str
 
+import "std.int" as int
+
 import "std.json" as json
 
 import "std.list" as list
@@ -97,6 +99,22 @@ fn get_bool(j :: jv.Json, key :: Str) -> Bool {
 # ---- snake_case -> wire mapping -----------------------------------
 fn to_wire(r :: Requirements) -> ReqWire {
   { scheme: r.scheme, network: r.network, maxAmountRequired: r.max_amount_required, resource: r.resource, description: r.description, mimeType: r.mime_type, payTo: r.pay_to, maxTimeoutSeconds: r.max_timeout_seconds, asset: r.asset }
+}
+
+fn json_escape(s :: Str) -> Str {
+  let a := str.join(str.split(s, "\\"), "\\\\")
+  str.join(str.split(a, "\""), "\\\"")
+}
+
+# V2 requirements JSON: field name `amount` (not `maxAmountRequired`) and
+# `extra.feePayer` -- what a real V2 facilitator's /verify and /settle
+# BOTH expect for paymentRequirements (found live: /settle rejected a
+# V1-shaped `to_wire` requirements object with the same
+# invalid_exact_svm_payload_missing_fee_payer error the whole SVM
+# transaction-builder effort started from, even though the payload itself
+# was already correct -- the requirements echo needs the same V2 shape).
+fn requirements_v2_json(r :: Requirements) -> Str {
+  str.join(["{\"scheme\":\"", r.scheme, "\",\"network\":\"", r.network, "\",\"amount\":\"", r.max_amount_required, "\",\"asset\":\"", r.asset, "\",\"payTo\":\"", r.pay_to, "\",\"maxTimeoutSeconds\":", int.to_str(r.max_timeout_seconds), ",\"extra\":{\"feePayer\":\"", json_escape(r.fee_payer), "\"}}"], "")
 }
 
 # ---- header primitive ---------------------------------------------

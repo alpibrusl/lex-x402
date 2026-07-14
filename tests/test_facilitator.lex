@@ -25,6 +25,10 @@ fn requirement() -> types.Requirements {
   { scheme: "exact", network: "solana-devnet", max_amount_required: "10000", resource: "https://api.example.com/convert", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "AssetMint111111111111111111111111111111111", fee_payer: "" }
 }
 
+fn requirement_with_fee_payer() -> types.Requirements {
+  { scheme: "exact", network: "solana-devnet", max_amount_required: "10000", resource: "https://api.example.com/convert", description: "API call", mime_type: "application/json", pay_to: "MerchantSoLAddr2222222222222222222222222222", max_timeout_seconds: 60, asset: "AssetMint111111111111111111111111111111111", fee_payer: "FeePayerSoLAddr33333333333333333333333333333" }
+}
+
 fn payment_header() -> Str {
   crypto.base64_encode(bytes.from_str("{\"x402Version\":2,\"scheme\":\"exact\",\"network\":\"solana-devnet\",\"payload\":{\"signature\":\"sig\",\"authorization\":{\"from\":\"a\",\"to\":\"b\",\"value\":\"10000\",\"validAfter\":0,\"validBefore\":1,\"nonce\":\"n\"}}}"))
 }
@@ -68,8 +72,31 @@ fn t_body_rejects_invalid_base64() -> Result[Unit, Str] {
   }
 }
 
+# Found live paying a real facilitator end-to-end (#93/OP5 e2e
+# verification): /settle rejected a V1-shaped `paymentRequirements`
+# (maxAmountRequired, no extra.feePayer) with
+# invalid_exact_svm_payload_missing_fee_payer, even though the payload's
+# own transaction was already valid -- the requirements echo must be the
+# same V2 shape (`amount`, `extra.feePayer`) the payload's `accepted`
+# object uses.
+fn t_body_sends_v2_shaped_requirements() -> Result[Unit, Str] {
+  match facilitator.body(payment_header(), requirement_with_fee_payer()) {
+    Err(e) => Err(str.concat("body failed: ", e)),
+    Ok(b) => {
+      let has_amount := str.contains(b, "\"amount\":\"10000\"")
+      let has_fee_payer := str.contains(b, "\"feePayer\":\"FeePayerSoLAddr33333333333333333333333333333\"")
+      let has_v1_field := str.contains(b, "maxAmountRequired")
+      if has_amount and has_fee_payer and not has_v1_field {
+        Ok(())
+      } else {
+        Err(str.concat("expected V2-shaped paymentRequirements (amount + extra.feePayer, no maxAmountRequired), got: ", b))
+      }
+    },
+  }
+}
+
 fn suite() -> List[Result[Unit, Str]] {
-  [t_body_embeds_decoded_payload_as_json_object(), t_body_preserves_inner_fields(), t_body_rejects_invalid_base64()]
+  [t_body_embeds_decoded_payload_as_json_object(), t_body_preserves_inner_fields(), t_body_rejects_invalid_base64(), t_body_sends_v2_shaped_requirements()]
 }
 
 fn run_all() -> Unit {

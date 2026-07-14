@@ -133,20 +133,12 @@ fn parse_amount(s :: Str) -> Result[Int, Str] {
   }
 }
 
-fn json_escape(s :: Str) -> Str {
-  let a := str.join(str.split(s, "\\"), "\\\\")
-  str.join(str.split(a, "\""), "\\\"")
-}
-
 # The V2 PaymentPayload envelope: x402Version, an optional `resource`
-# description, the `accepted` requirement mirrored back (field name
-# `amount`, matching what the facilitator itself sent), and the
-# scheme-specific `payload`.
+# description, the `accepted` requirement mirrored back (shared with
+# facilitator.lex's own paymentRequirements echo via
+# types.requirements_v2_json, so both stay in the same V2 shape a real
+# facilitator expects), and the scheme-specific `payload`.
 fn payload_json(req :: types.Requirements, tx_b64 :: Str) -> Str {
-  str.join(["{\"x402Version\":", int.to_str(types.version()), ",\"resource\":{\"url\":\"", json_escape(req.resource), "\",\"description\":\"", json_escape(req.description), "\",\"mimeType\":\"", json_escape(req.mime_type), "\"},\"accepted\":", accepted_json(req), ",\"payload\":{\"transaction\":\"", tx_b64, "\"}}"], "")
-}
-
-fn accepted_json(req :: types.Requirements) -> Str {
-  str.join(["{\"scheme\":\"", req.scheme, "\",\"network\":\"", req.network, "\",\"amount\":\"", req.max_amount_required, "\",\"asset\":\"", req.asset, "\",\"payTo\":\"", req.pay_to, "\",\"maxTimeoutSeconds\":", int.to_str(req.max_timeout_seconds), ",\"extra\":{\"feePayer\":\"", req.fee_payer, "\"}}"], "")
+  str.join(["{\"x402Version\":", int.to_str(types.version()), ",\"resource\":{\"url\":\"", types.json_escape(req.resource), "\",\"description\":\"", types.json_escape(req.description), "\",\"mimeType\":\"", types.json_escape(req.mime_type), "\"},\"accepted\":", types.requirements_v2_json(req), ",\"payload\":{\"transaction\":\"", tx_b64, "\"}}"], "")
 }
 
