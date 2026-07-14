@@ -12,15 +12,19 @@
 # own transfer-authority slot.
 #
 # What this module does NOT do (documented gaps, not silent shortcuts):
-#   - Associated Token Account creation: both the payer's and the payTo's
-#     token accounts must already exist on-chain. svm_rpc.find_token_account
-#     reads the real existing account rather than deriving a PDA (this
-#     codebase has no off-curve validity search), so a payTo with no token
-#     account for this asset yet produces a clear error, not a guess.
 #   - Compute-unit estimation via simulation: uses a fixed conservative
 #     unit limit (see `compute_unit_limit`) instead of calling
 #     simulateTransaction. Good enough to not run out of compute for a
 #     single transferChecked; a real production path could tighten this.
+#
+# Associated Token Accounts (source and destination) are derived via
+# solana_tx.associated_token_address (a real PDA search, verified against
+# a live on-chain account this session) and always created idempotently
+# in the same transaction -- CreateIdempotent is a no-op if the account
+# already exists, so this never needs a "does it exist yet" RPC round
+# trip before committing to instructions. The fee payer (the
+# facilitator's sponsor) funds the rent for any account that doesn't
+# exist yet, consistent with it sponsoring the transaction's gas too.
 
 import "std.str" as str
 
@@ -74,21 +78,21 @@ fn build_with_rpc(req :: types.Requirements, signer :: solana.Signer, rpc_url ::
       Err(e) => Err(e),
       Ok(fee_payer_pk) => match tx.decode_pubkey(signer.address) {
         Err(e) => Err(e),
-        Ok(payer_pk) => match tx.decode_pubkey(req.asset) {
+        Ok(payer_pk) => match tx.decode_pubkey(req.pay_to) {
           Err(e) => Err(e),
-          Ok(mint_pk) => match rpc.find_token_account(rpc_url, signer.address, req.asset) {
+          Ok(merchant_pk) => match tx.decode_pubkey(req.asset) {
             Err(e) => Err(e),
-            Ok(source_ata_b58) => match rpc.find_token_account(rpc_url, req.pay_to, req.asset) {
+            Ok(mint_pk) => match tx.token_program_id() {
               Err(e) => Err(e),
-              Ok(dest_ata_b58) => match tx.decode_pubkey(source_ata_b58) {
+              Ok(token_pid) => match tx.associated_token_address(payer_pk, mint_pk, token_pid) {
                 Err(e) => Err(e),
-                Ok(source_ata_pk) => match tx.decode_pubkey(dest_ata_b58) {
+                Ok(source_ata_pk) => match tx.associated_token_address(merchant_pk, mint_pk, token_pid) {
                   Err(e) => Err(e),
                   Ok(dest_ata_pk) => match rpc.get_mint_decimals(rpc_url, req.asset) {
                     Err(e) => Err(e),
                     Ok(decimals) => match rpc.get_latest_blockhash(rpc_url) {
                       Err(e) => Err(e),
-                      Ok(blockhash) => assemble_and_sign(req, signer, fee_payer_pk, payer_pk, mint_pk, source_ata_pk, dest_ata_pk, amount, decimals, blockhash),
+                      Ok(blockhash) => assemble_and_sign(req, signer, fee_payer_pk, payer_pk, merchant_pk, mint_pk, token_pid, source_ata_pk, dest_ata_pk, amount, decimals, blockhash),
                     },
                   },
                 },
@@ -101,26 +105,32 @@ fn build_with_rpc(req :: types.Requirements, signer :: solana.Signer, rpc_url ::
   }
 }
 
-fn assemble_and_sign(req :: types.Requirements, signer :: solana.Signer, fee_payer_pk :: Bytes, payer_pk :: Bytes, mint_pk :: Bytes, source_ata_pk :: Bytes, dest_ata_pk :: Bytes, amount :: Int, decimals :: Int, blockhash :: Bytes) -> Result[Str, Str] {
+fn assemble_and_sign(req :: types.Requirements, signer :: solana.Signer, fee_payer_pk :: Bytes, payer_pk :: Bytes, merchant_pk :: Bytes, mint_pk :: Bytes, token_pid :: Bytes, source_ata_pk :: Bytes, dest_ata_pk :: Bytes, amount :: Int, decimals :: Int, blockhash :: Bytes) -> Result[Str, Str] {
   match tx.compute_budget_program_id() {
     Err(e) => Err(e),
-    Ok(cb_pid) => match tx.token_program_id() {
+    Ok(cb_pid) => match tx.system_program_id() {
       Err(e) => Err(e),
-      Ok(token_pid) => {
-        let instructions := [tx.set_compute_unit_limit(cb_pid, compute_unit_limit()), tx.set_compute_unit_price(cb_pid, compute_unit_price_micro_lamports()), tx.transfer_checked(token_pid, source_ata_pk, mint_pk, dest_ata_pk, payer_pk, amount, decimals)]
-        match tx.build_message(fee_payer_pk, blockhash, instructions) {
-          Err(e) => Err(e),
-          Ok(message) => match tx.unsigned_wire_transaction(fee_payer_pk, blockhash, instructions) {
+      Ok(sys_pid) => match tx.associated_token_program_id() {
+        Err(e) => Err(e),
+        Ok(ata_pid) => {
+          let create_source := tx.create_associated_token_account_idempotent(ata_pid, fee_payer_pk, source_ata_pk, payer_pk, mint_pk, sys_pid, token_pid)
+          let create_dest := tx.create_associated_token_account_idempotent(ata_pid, fee_payer_pk, dest_ata_pk, merchant_pk, mint_pk, sys_pid, token_pid)
+          let transfer := tx.transfer_checked(token_pid, source_ata_pk, mint_pk, dest_ata_pk, payer_pk, amount, decimals)
+          let instructions := [tx.set_compute_unit_limit(cb_pid, compute_unit_limit()), tx.set_compute_unit_price(cb_pid, compute_unit_price_micro_lamports()), create_source, create_dest, transfer]
+          match tx.build_message(fee_payer_pk, blockhash, instructions) {
             Err(e) => Err(e),
-            Ok(wire) => match crypto.base64url_decode(signer.secret_b64url) {
-              Err(_) => Err("svm_client: signer secret is not valid base64url"),
-              Ok(secret) => match tx.sign_into(wire, fee_payer_pk, instructions, secret, payer_pk, message) {
-                Err(e) => Err(e),
-                Ok(signed_wire) => Ok(types.encode_header(payload_json(req, crypto.base64_encode(signed_wire)))),
+            Ok(message) => match tx.unsigned_wire_transaction(fee_payer_pk, blockhash, instructions) {
+              Err(e) => Err(e),
+              Ok(wire) => match crypto.base64url_decode(signer.secret_b64url) {
+                Err(_) => Err("svm_client: signer secret is not valid base64url"),
+                Ok(secret) => match tx.sign_into(wire, fee_payer_pk, instructions, secret, payer_pk, message) {
+                  Err(e) => Err(e),
+                  Ok(signed_wire) => Ok(types.encode_header(payload_json(req, crypto.base64_encode(signed_wire)))),
+                },
               },
             },
-          },
-        }
+          }
+        },
       },
     },
   }
