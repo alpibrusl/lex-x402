@@ -44,4 +44,8 @@ lex ci          # check --strict + fmt --check + test
 
 ## License
 
-[EUPL-1.2](https://eupl.eu/).
+
+Copyright (c) 2026 lex-x402 contributors.
+
+Licensed under the [EUPL-1.2](LICENSE) — the European Union Public Licence, as used across the `lex-*` ecosystem.
+
