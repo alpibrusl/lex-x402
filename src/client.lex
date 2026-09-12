@@ -183,7 +183,7 @@ fn is_exact_solana(r :: types.Requirements) -> Bool {
     match network.family(r.network) {
       Solana => true,
       Evm => false,
-      Unknown => false,
+      UnknownFamily => false,
     }
   } else {
     false
@@ -195,7 +195,7 @@ fn is_exact_evm(r :: types.Requirements) -> Bool {
     match network.family(r.network) {
       Evm => true,
       Solana => false,
-      Unknown => false,
+      UnknownFamily => false,
     }
   } else {
     false
@@ -206,7 +206,7 @@ fn build_payload(cfg :: Config, req :: types.Requirements) -> [net] Result[Str, 
   match network.family(req.network) {
     Solana => svm_client.build_payment(req, cfg.signer, cfg.svm_rpc_url),
     Evm => evm.build(req),
-    Unknown => Err(str.concat("x402: unsupported network ", req.network)),
+    UnknownFamily => Err(str.concat("x402: unsupported network ", req.network)),
   }
 }
 

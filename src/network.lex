@@ -9,7 +9,7 @@
 
 import "std.str" as str
 
-type Family = Evm | Solana | Unknown
+type Family = Evm | Solana | UnknownFamily
 
 fn family(network :: Str) -> Family
   examples {
@@ -17,7 +17,7 @@ fn family(network :: Str) -> Family
     family("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp") => Solana,
     family("base") => Evm,
     family("solana") => Solana,
-    family("near:mainnet") => Unknown
+    family("near:mainnet") => UnknownFamily
   }
 {
   if str.starts_with(network, "eip155:") {
@@ -38,7 +38,7 @@ fn short_family(network :: Str) -> Family
     short_family("base-sepolia") => Evm,
     short_family("solana") => Solana,
     short_family("solana-devnet") => Solana,
-    short_family("near") => Unknown
+    short_family("near") => UnknownFamily
   }
 {
   if network == "solana" or network == "solana-devnet" {
@@ -47,7 +47,7 @@ fn short_family(network :: Str) -> Family
     if network == "base" or network == "base-sepolia" or network == "avalanche" or network == "avalanche-fuji" {
       Evm
     } else {
-      Unknown
+      UnknownFamily
     }
   }
 }
